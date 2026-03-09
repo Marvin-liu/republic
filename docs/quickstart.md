@@ -20,11 +20,7 @@ llm = LLM(model="openrouter:openrouter/free", api_key="<API_KEY>")
 
 ```python
 out = llm.chat("Write one short release note.", max_tokens=48)
-
-if out.error:
-    print("error:", out.error.kind, out.error.message)
-else:
-    print("text:", out.value)
+print("text:", out)
 ```
 
 ## Step 3: Add an auditable trace to the session
@@ -36,7 +32,7 @@ tape = llm.tape("release-notes")
 tape.handoff("draft_v1", state={"owner": "assistant"})
 
 reply = tape.chat("Summarize the version changes in three bullets.", system_prompt="Keep it concise.")
-print(reply.value)
+print(reply)
 ```
 
 ## Step 4: Handle failures and fallback
@@ -44,6 +40,8 @@ print(reply.value)
 Note: `max_retries` is the number of retries after the first attempt (total attempts per model is `1 + max_retries`).
 
 ```python
+from republic import ErrorPayload, LLM
+
 llm = LLM(
     model="openai:gpt-4o-mini",
     fallback_models=["openrouter:openrouter/free"],
@@ -51,8 +49,9 @@ llm = LLM(
     api_key={"openai": "<OPENAI_KEY>", "openrouter": "<OPENROUTER_KEY>"},
 )
 
-result = llm.chat("say hello", max_tokens=8)
-if result.error:
-    # error.kind is one of invalid_input/config/provider/tool/temporary/not_found/unknown
-    print(result.error.kind, result.error.message)
+try:
+    result = llm.chat("say hello", max_tokens=8)
+    print(result)
+except ErrorPayload as error:
+    print(error.kind, error.message)
 ```
