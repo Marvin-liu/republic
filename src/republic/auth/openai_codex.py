@@ -358,7 +358,6 @@ def _exchange_openai_codex_authorization_code(
         redirect_uri=redirect_uri,
         code_challenge_method="S256",
         timeout=timeout_seconds,
-        trust_env=False,
     ) as oauth:
         payload = oauth.fetch_token(
             url=token_url,

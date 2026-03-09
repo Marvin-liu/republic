@@ -94,7 +94,7 @@ class OpenAICodexClient:
             return self._stream_request(payload)
 
         try:
-            with httpx.Client(timeout=self._config.timeout_seconds, trust_env=False) as client:
+            with httpx.Client(timeout=self._config.timeout_seconds) as client:
                 response = client.post(
                     self._resolve_url(self._config.api_base),
                     headers=self._build_headers(),
