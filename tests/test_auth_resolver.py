@@ -212,7 +212,10 @@ def test_github_copilot_oauth_resolver_prefers_persisted_token(tmp_path) -> None
     assert resolver("github-copilot") == _TEST_GITHUB_TOKEN
 
 
-def test_github_copilot_oauth_resolver_uses_github_cli_token_when_local_file_missing(tmp_path) -> None:
+def test_github_copilot_oauth_resolver_uses_github_cli_token_when_local_file_missing(tmp_path, monkeypatch) -> None:
+    for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+
     gh_dir = tmp_path / "gh"
     gh_dir.mkdir()
     (gh_dir / "hosts.yml").write_text(
