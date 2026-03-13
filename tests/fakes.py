@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import queue
+import threading
 from collections import deque
+from collections.abc import AsyncIterator, Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -62,12 +66,47 @@ class FakeAnyLLMClient:
 
     def responses(self, **kwargs: Any) -> Any:
         self.calls.append({"responses": True, **dict(kwargs)})
+        if kwargs.get("stream") and not self.responses_queue and self.aresponses_queue:
+            response = self._next(self.aresponses_queue, "aresponses")
+            if isinstance(response, Response):
+                return response
+            return self._async_iter_to_sync_iter(response)
         return self._next(self.responses_queue, "responses")
 
     async def aresponses(self, **kwargs: Any) -> Any:
         self.calls.append({"responses": True, **dict(kwargs)})
         queue = self.aresponses_queue if self.aresponses_queue else self.responses_queue
         return self._next(queue, "aresponses")
+
+    @staticmethod
+    def _async_iter_to_sync_iter(async_iter: AsyncIterator[Any]) -> Iterator[Any]:
+        item_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+        def _runner() -> None:
+            async def _consume() -> None:
+                try:
+                    async for item in async_iter:
+                        item_queue.put(("item", item))
+                except Exception as exc:
+                    item_queue.put(("error", exc))
+                finally:
+                    item_queue.put(("done", None))
+
+            asyncio.run(_consume())
+
+        thread = threading.Thread(target=_runner, daemon=True)
+        thread.start()
+        try:
+            while True:
+                kind, value = item_queue.get()
+                if kind == "item":
+                    yield value
+                    continue
+                if kind == "error":
+                    raise value
+                break
+        finally:
+            thread.join()
 
     def _embedding(self, **kwargs: Any) -> Any:
         self.calls.append({"embedding": True, **dict(kwargs)})
@@ -196,6 +235,24 @@ def make_responses_response(
     })
 
 
+def make_responses_reasoning_response(
+    *,
+    usage: dict[str, Any] | None = None,
+    status: str = "completed",
+    incomplete_details: Any = None,
+) -> Any:
+    return SimpleNamespace(
+        id="resp_reasoning_1",
+        object="response",
+        status=status,
+        incomplete_details=incomplete_details,
+        model="gpt-5.4-pro",
+        output_text=None,
+        output=[SimpleNamespace(type="reasoning", id="rs_1", summary=[], content=None, status=None)],
+        usage=usage or {"input_tokens": 1, "output_tokens": 128, "total_tokens": 129},
+    )
+
+
 def make_responses_text_delta(delta: str) -> Any:
     return SimpleNamespace(type="response.output_text.delta", delta=delta)
 
@@ -230,6 +287,11 @@ def make_responses_output_item_added(
     return SimpleNamespace(type="response.output_item.added", item=item)
 
 
+def make_responses_reasoning_item_added(*, item_id: str = "rs_1") -> Any:
+    item = SimpleNamespace(type="reasoning", id=item_id, summary=[], content=None, status=None)
+    return SimpleNamespace(type="response.output_item.added", item=item)
+
+
 def make_responses_output_item_done(
     *,
     item_id: str = "fc_1",
@@ -238,4 +300,9 @@ def make_responses_output_item_done(
     arguments: str = '{"text":"tokyo"}',
 ) -> Any:
     item = SimpleNamespace(type="function_call", id=item_id, call_id=call_id, name=name, arguments=arguments)
+    return SimpleNamespace(type="response.output_item.done", item=item)
+
+
+def make_responses_reasoning_item_done(*, item_id: str = "rs_1") -> Any:
+    item = SimpleNamespace(type="reasoning", id=item_id, summary=[], content=None, status=None)
     return SimpleNamespace(type="response.output_item.done", item=item)
