@@ -166,7 +166,7 @@ class ToolExecutor:
             raise ErrorPayload(
                 ErrorKind.INVALID_INPUT,
                 f"Tool '{tool_name}' argument validation failed.",
-                details={"errors": exc.errors()},
+                details={"errors": json.loads(exc.json())},
             ) from exc
         except Exception as exc:
             raise ErrorPayload(
